@@ -1,5 +1,5 @@
 /// Shorthand for Result<T, Error>
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Custom error type for the crate
 #[derive(Debug, PartialEq)]
@@ -11,7 +11,9 @@ pub struct Error {
 /// Kind of error
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
-    UnknownError,
+    Input,
+    Eof,
+    Unknown,
 }
 
 impl std::fmt::Display for Error {
@@ -29,5 +31,11 @@ impl Error {
             kind,
             message: message.into(),
         }
+    }
+}
+
+impl From<csv::Error> for Error {
+    fn from(e: csv::Error) -> Self {
+        Self::new(ErrorKind::Input, &e.to_string())
     }
 }
