@@ -1,4 +1,5 @@
 mod reader;
+mod writer;
 
 use crate::errors::{Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
@@ -6,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub use reader::{IterFai, Reader};
 
 const DELIMITER: u8 = b'\t';
+const FASTA_WIDTH: usize = 5;
+const FASTQ_WIDTH: usize = 6;
 
 /// An fai entry - description at the following:
 ///     https://www.htslib.org/doc/faidx.html
@@ -30,16 +33,31 @@ impl Fai {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Convert an FAI to string record
+    pub fn to_string_record(&self) -> csv::StringRecord {
+        let mut record = vec![
+            self.name.clone(),
+            self.length.to_string(),
+            self.offset.to_string(),
+            self.line_bases.to_string(),
+            self.line_width.to_string(),
+        ];
+        if let Some(qual_offset) = self.qual_offset {
+            record.push(qual_offset.to_string());
+        }
+        csv::StringRecord::from(record)
+    }
 }
 
 impl std::convert::TryFrom<&mut csv::StringRecord> for Fai {
     type Error = Error;
 
     fn try_from(record: &mut csv::StringRecord) -> Result<Self> {
-        if record.len() > 6 {
+        if record.len() > FASTQ_WIDTH {
             return Err(Error::new(ErrorKind::Input, "invalid fai format"));
         }
-        if record.len() == 5 {
+        if record.len() == FASTA_WIDTH {
             record.push_field("");
         }
         let fai: Fai = record.deserialize(None)?;
@@ -52,7 +70,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_fai_from_string_record() {
+    fn test_fai_try_from_string_record() {
         struct TestCase<'a> {
             name: &'a str,
             record: csv::StringRecord,
@@ -115,6 +133,46 @@ mod tests {
                 let actual = actual.unwrap();
                 assert_eq!(test_case.expected, actual, "{}", test_case.name);
             }
+        }
+    }
+
+    #[test]
+    fn test_fai_to_string_record() {
+        struct TestCase<'a> {
+            name: &'a str,
+            record: Fai,
+            expected: csv::StringRecord,
+        }
+        let test_cases = &[
+            TestCase {
+                name: "Should convert a fasta fai record [Issue #6]",
+                record: Fai {
+                    name: "name".into(),
+                    length: 1,
+                    offset: 2,
+                    line_bases: 3,
+                    line_width: 4,
+                    qual_offset: None,
+                },
+                expected: csv::StringRecord::from(vec!["name", "1", "2", "3", "4"]),
+            },
+            TestCase {
+                name: "Should convert a fastq fai record [Issue #6]",
+                record: Fai {
+                    name: "name".into(),
+                    length: 1,
+                    offset: 2,
+                    line_bases: 3,
+                    line_width: 4,
+                    qual_offset: Some(5),
+                },
+                expected: csv::StringRecord::from(vec!["name", "1", "2", "3", "4", "5"]),
+            },
+        ];
+
+        for test_case in test_cases.iter() {
+            let actual = test_case.record.to_string_record();
+            assert_eq!(test_case.expected, actual, "{}", test_case.name);
         }
     }
 }

@@ -1,6 +1,5 @@
 use super::{Fai, DELIMITER};
 use crate::errors::{Error, ErrorKind, Result};
-use std::io::Read;
 
 /// Reader is a reader for fai files
 pub struct Reader<R: std::io::Read> {
@@ -115,10 +114,26 @@ mod tests {
     }
 
     #[test]
+    fn test_reader_read_different_widths() {
+        let name = "Should error out if mixing fasta and fastq entries [Issue #5]";
+        let input_lines: &[u8] = b"ref1\t1\t2\t3\t4\nref2\t1\t2\t3\t4\t5\n";
+        let mut reader = Reader::from_reader(input_lines);
+        let mut record = Fai::new();
+        assert!(reader.read(&mut record).is_ok(), "{}", name);
+        assert!(reader.read(&mut record).is_err(), "{}", name);
+
+        let input_lines: &[u8] = b"ref1\t1\t2\t3\t4\t5\nref2\t1\t2\t3\t4\n";
+        let mut reader = Reader::from_reader(input_lines);
+        let mut record = Fai::new();
+        assert!(reader.read(&mut record).is_ok(), "{}", name);
+        assert!(reader.read(&mut record).is_err(), "{}", name);
+    }
+
+    #[test]
     fn test_reader_iter() {
         let name = "Should iterate through multiple lines [Issue #5]";
         let input_lines: &[u8] = b"ref1\t1\t2\t3\t4\t5\nref2\t1\t2\t3\t4\t5\n";
-        let mut reader = Reader::from_reader(input_lines);
+        let reader = Reader::from_reader(input_lines);
         let mut iter = reader.iter();
 
         assert_eq!(
