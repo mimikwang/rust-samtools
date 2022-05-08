@@ -12,7 +12,9 @@ pub struct Error {
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
     Input,
+    IO,
     Eof,
+    TypeConversion,
     Unknown,
 }
 
@@ -37,5 +39,23 @@ impl Error {
 impl From<csv::Error> for Error {
     fn from(e: csv::Error) -> Self {
         Self::new(ErrorKind::Input, &e.to_string())
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::new(ErrorKind::IO, &e.to_string())
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(e: std::string::FromUtf8Error) -> Self {
+        Self::new(ErrorKind::TypeConversion, &e.to_string())
+    }
+}
+
+impl From<std::str::Utf8Error> for Error {
+    fn from(e: std::str::Utf8Error) -> Self {
+        Self::new(ErrorKind::TypeConversion, &e.to_string())
     }
 }
