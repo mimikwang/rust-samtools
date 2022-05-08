@@ -19,13 +19,13 @@ pub struct Fai {
     /// Total length of this reference sequence, in bases
     pub length: usize,
     /// Offset in the FASTA/FASTQ file of this sequence's first base
-    pub offset: usize,
+    pub offset: u64,
     /// The number of bases on each line
     pub line_bases: usize,
     /// The number of bytes in each line, including the newline
     pub line_width: usize,
     /// Offset of sequence's first quality within the FASTQ file
-    pub qual_offset: Option<usize>,
+    pub qual_offset: Option<u64>,
 }
 
 impl Fai {
@@ -47,6 +47,16 @@ impl Fai {
             record.push(qual_offset.to_string());
         }
         csv::StringRecord::from(record)
+    }
+
+    /// Clear Fai record
+    pub fn clear(&mut self) {
+        self.name.clear();
+        self.length = 0;
+        self.offset = 0;
+        self.line_bases = 0;
+        self.line_width = 0;
+        self.qual_offset = None;
     }
 }
 
