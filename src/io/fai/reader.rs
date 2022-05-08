@@ -1,4 +1,4 @@
-use super::{Fai, DELIMITER};
+use super::{Fai, IterFai, ReadFai, DELIMITER};
 use crate::errors::{Error, ErrorKind, Result};
 
 /// Reader is a reader for fai files
@@ -22,42 +22,23 @@ where
         }
     }
 
+    // Returns an iterator
+    pub fn iter(self) -> IterFai<Self> {
+        IterFai::new(self)
+    }
+}
+
+impl<R> ReadFai for Reader<R>
+where
+    R: std::io::Read,
+{
     /// Read an fai record
-    pub fn read(&mut self, record: &mut Fai) -> Result<()> {
+    fn read(&mut self, record: &mut Fai) -> Result<()> {
         if self.reader.read_record(&mut self.string_record)? {
             *record = Fai::try_from(&mut self.string_record)?;
             return Ok(());
         }
         Err(Error::new(ErrorKind::Eof, "end of file"))
-    }
-
-    // Returns an iterator
-    pub fn iter(self) -> IterFai<R> {
-        IterFai { reader: self }
-    }
-}
-
-/// Type for iterating over fai records
-pub struct IterFai<R>
-where
-    R: std::io::Read,
-{
-    reader: Reader<R>,
-}
-
-impl<R> Iterator for IterFai<R>
-where
-    R: std::io::Read,
-{
-    type Item = Result<Fai>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut record = Fai::new();
-        match self.reader.read(&mut record) {
-            Ok(()) => Some(Ok(record)),
-            Err(err) if err.kind == ErrorKind::Eof => None,
-            Err(err) => Some(Err(err)),
-        }
     }
 }
 

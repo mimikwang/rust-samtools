@@ -4,11 +4,16 @@ mod writer;
 use crate::errors::{Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
 
-pub use reader::{IterFai, Reader};
+pub use reader::Reader;
 
 const DELIMITER: u8 = b'\t';
 const FASTA_WIDTH: usize = 5;
 const FASTQ_WIDTH: usize = 6;
+
+/// ReadFai reads a Fai record
+pub trait ReadFai {
+    fn read(&mut self, record: &mut Fai) -> Result<()>;
+}
 
 /// An fai entry - description at the following:
 ///     https://www.htslib.org/doc/faidx.html
@@ -72,6 +77,39 @@ impl std::convert::TryFrom<&mut csv::StringRecord> for Fai {
         }
         let fai: Fai = record.deserialize(None)?;
         Ok(fai)
+    }
+}
+
+/// Type for iterating over fai records
+pub struct IterFai<F>
+where
+    F: ReadFai,
+{
+    reader: F,
+}
+
+impl<F> IterFai<F>
+where
+    F: ReadFai,
+{
+    pub fn new(reader: F) -> Self {
+        Self { reader }
+    }
+}
+
+impl<F> Iterator for IterFai<F>
+where
+    F: ReadFai,
+{
+    type Item = Result<Fai>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut record = Fai::new();
+        match self.reader.read(&mut record) {
+            Ok(()) => Some(Ok(record)),
+            Err(err) if err.kind == ErrorKind::Eof => None,
+            Err(err) => Some(Err(err)),
+        }
     }
 }
 
