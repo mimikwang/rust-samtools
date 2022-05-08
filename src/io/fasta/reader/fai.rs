@@ -1,6 +1,7 @@
+use super::super::super::common;
 use super::*;
 use crate::errors::{Error, ErrorKind, Result};
-use crate::io::fai::Fai;
+use crate::io::fai::{Fai, IterFai, ReadFai};
 
 /// Reader reads a fasta file into FAI entries
 pub struct Reader<B>
@@ -23,11 +24,9 @@ where
         }
     }
 
-    /// Read a FAI record
-    pub fn read(&mut self, record: &mut Fai) -> Result<()> {
-        self.read_description(record)?;
-        self.read_sequence(record)?;
-        Ok(())
+    // Returns an iterator
+    pub fn iter(self) -> IterFai<Self> {
+        IterFai::new(self)
     }
 
     /// Read the first line of the fasta entry
@@ -60,21 +59,29 @@ where
         }
         if record.line_width == 0 {
             record.line_width = num_bytes;
-            record.line_bases = count_bases(&self.buffer)?;
+            record.line_bases = common::count_bases(&self.buffer)?;
         } else if record.line_width < num_bytes {
             return Err(Error::new(ErrorKind::Input, "invalid fasta record"));
         }
-        record.length += count_bases(&self.buffer)?;
+        record.length += common::count_bases(&self.buffer)?;
         Ok(())
     }
 
     /// Read in a line of data
     fn read_line(&mut self) -> Result<usize> {
-        let num_bytes = self.reader.read_until(NEWLINE, &mut self.buffer)?;
-        if num_bytes == 0 {
-            return Err(Error::new(ErrorKind::Eof, "end of file"));
-        }
-        Ok(num_bytes)
+        common::read_line(&mut self.reader, &mut self.buffer)
+    }
+}
+
+impl<R> ReadFai for Reader<R>
+where
+    R: std::io::BufRead + std::io::Seek,
+{
+    /// Read a FAI record
+    fn read(&mut self, record: &mut Fai) -> Result<()> {
+        self.read_description(record)?;
+        self.read_sequence(record)?;
+        Ok(())
     }
 }
 
@@ -84,29 +91,12 @@ fn get_name(description: &[u8]) -> Result<String> {
         return Err(Error::new(ErrorKind::Input, "invalid fasta format"));
     }
     let description = String::from_utf8(description[1..].to_vec())?;
-    Ok(description
-        .trim_start_matches(SPACE)
-        .split(SPACE)
-        .take(1)
-        .collect::<String>()
-        .trim()
-        .into())
+    Ok(common::parse_sequence_name(&description))
 }
 
 /// Check to see if the line is a description line
 fn is_description(line: &[u8]) -> bool {
-    if line.is_empty() {
-        return false;
-    }
-    if line[0] == SEQ_START {
-        return true;
-    }
-    false
-}
-
-/// Count the number of bases in a line
-fn count_bases(line: &[u8]) -> Result<usize> {
-    Ok(std::str::from_utf8(line)?.trim().len())
+    line.starts_with(&[SEQ_START])
 }
 
 #[cfg(test)]
@@ -370,30 +360,6 @@ GCATGCATGCATGC"#;
                 "{}",
                 test_case.name
             );
-        }
-    }
-
-    #[test]
-    fn test_count_bases() {
-        struct TestCase<'a> {
-            name: &'a str,
-            line: &'a [u8],
-            expect_err: bool,
-            expected: Result<usize>,
-        }
-        let test_cases = [TestCase {
-            name: "Should return the base count [Issue #14]",
-            line: b"AAAA\r\n",
-            expect_err: false,
-            expected: Ok(4),
-        }];
-        for test_case in test_cases {
-            let actual = count_bases(test_case.line);
-            if test_case.expect_err {
-                assert!(actual.is_err(), "{}", test_case.name);
-            } else {
-                assert_eq!(test_case.expected, actual, "{}", test_case.name);
-            }
         }
     }
 }
