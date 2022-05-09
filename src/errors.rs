@@ -2,6 +2,9 @@
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Custom error type for the crate
+///
+/// All external error types should be converted to `Error`.
+///
 #[derive(Debug, PartialEq)]
 pub struct Error {
     pub kind: ErrorKind,
@@ -11,20 +14,33 @@ pub struct Error {
 /// Kind of error
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
+    /// Input format errors
     Input,
+    /// Errors related to input / output
     IO,
+    /// End of file errors
     Eof,
+    /// Type conversion errors
     TypeConversion,
+    /// User related errors
+    User,
+    /// All other errors
     Unknown,
 }
+
+impl Default for ErrorKind {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+impl std::error::Error for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "kind: {:?}, message: {}", self.kind, self.message)
     }
 }
-
-impl std::error::Error for Error {}
 
 impl Error {
     /// Basic constructor for Error

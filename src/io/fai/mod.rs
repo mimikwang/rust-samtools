@@ -5,18 +5,21 @@ use crate::errors::{Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
 
 pub use reader::Reader;
+pub use writer::Writer;
 
 const DELIMITER: u8 = b'\t';
 const FASTA_WIDTH: usize = 5;
 const FASTQ_WIDTH: usize = 6;
 
-/// ReadFai reads a Fai record
-pub trait ReadFai {
+/// ReadToFai reads to a Fai record
+pub trait ReadToFai {
     fn read(&mut self, record: &mut Fai) -> Result<()>;
 }
 
-/// An fai entry - description at the following:
-///     https://www.htslib.org/doc/faidx.html
+/// Fai record as defined in the [`documentation`]
+///
+/// [`documentation`]: https://www.htslib.org/doc/faidx.html
+///
 #[derive(Debug, Deserialize, PartialEq, Serialize, Default)]
 pub struct Fai {
     /// Name of this reference sequence
@@ -29,17 +32,18 @@ pub struct Fai {
     pub line_bases: usize,
     /// The number of bytes in each line, including the newline
     pub line_width: usize,
-    /// Offset of sequence's first quality within the FASTQ file
+    /// Offset of sequence's first quality within the FASTQ file.  This is always `None` for
+    /// FASTA fies.
     pub qual_offset: Option<u64>,
 }
 
 impl Fai {
-    /// Construct a default fai
+    /// Construct a default Fai record
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Convert an FAI to string record
+    /// Convert a Fai record to a csv string record
     pub fn to_string_record(&self) -> csv::StringRecord {
         let mut record = vec![
             self.name.clone(),
@@ -54,7 +58,7 @@ impl Fai {
         csv::StringRecord::from(record)
     }
 
-    /// Clear Fai record
+    /// Clear the Fai record
     pub fn clear(&mut self) {
         self.name.clear();
         self.length = 0;
@@ -68,6 +72,10 @@ impl Fai {
 impl std::convert::TryFrom<&mut csv::StringRecord> for Fai {
     type Error = Error;
 
+    /// Convert a csv string record to a Fai record
+    ///
+    /// An error is returned if it doesn't conform to either the FASTA or FASTQ formats.
+    ///
     fn try_from(record: &mut csv::StringRecord) -> Result<Self> {
         if record.len() > FASTQ_WIDTH {
             return Err(Error::new(ErrorKind::Input, "invalid fai format"));
@@ -81,17 +89,19 @@ impl std::convert::TryFrom<&mut csv::StringRecord> for Fai {
 }
 
 /// Type for iterating over fai records
+#[derive(Debug)]
 pub struct IterFai<F>
 where
-    F: ReadFai,
+    F: ReadToFai,
 {
     reader: F,
 }
 
 impl<F> IterFai<F>
 where
-    F: ReadFai,
+    F: ReadToFai,
 {
+    /// Construct a new IterFai given a reader
     pub fn new(reader: F) -> Self {
         Self { reader }
     }
@@ -99,10 +109,11 @@ where
 
 impl<F> Iterator for IterFai<F>
 where
-    F: ReadFai,
+    F: ReadToFai,
 {
     type Item = Result<Fai>;
 
+    /// Implementation of the Iterator trait for IterFai
     fn next(&mut self) -> Option<Self::Item> {
         let mut record = Fai::new();
         match self.reader.read(&mut record) {
@@ -127,7 +138,7 @@ mod tests {
         }
         let test_cases = &mut [
             TestCase {
-                name: "Should parse a valid string record with 6 entries [Issue #5]",
+                name: "Should parse a valid string record with 6 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10", "4", "3"]),
                 expect_error: false,
                 expected: Fai {
@@ -140,7 +151,7 @@ mod tests {
                 },
             },
             TestCase {
-                name: "Should parse a valid string record with 5 entries [Issue #5]",
+                name: "Should parse a valid string record with 5 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10", "4"]),
                 expect_error: false,
                 expected: Fai {
@@ -153,19 +164,19 @@ mod tests {
                 },
             },
             TestCase {
-                name: "Should return an error with less than 5 entries [Issue #5]",
+                name: "Should return an error with less than 5 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10"]),
                 expect_error: true,
                 expected: Fai::new(),
             },
             TestCase {
-                name: "Should return an error with more than 6 entries [Issue #5]",
+                name: "Should return an error with more than 6 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10", "4", "6", "6"]),
                 expect_error: true,
                 expected: Fai::new(),
             },
             TestCase {
-                name: "Should return an error if entries are not the right type [Issue #5]",
+                name: "Should return an error if entries are not the right type",
                 record: csv::StringRecord::from(vec!["name", "1", "1.2", "10", "4", "6"]),
                 expect_error: true,
                 expected: Fai::new(),
@@ -193,7 +204,7 @@ mod tests {
         }
         let test_cases = &[
             TestCase {
-                name: "Should convert a fasta fai record [Issue #6]",
+                name: "Should convert a fasta fai record",
                 record: Fai {
                     name: "name".into(),
                     length: 1,
@@ -205,7 +216,7 @@ mod tests {
                 expected: csv::StringRecord::from(vec!["name", "1", "2", "3", "4"]),
             },
             TestCase {
-                name: "Should convert a fastq fai record [Issue #6]",
+                name: "Should convert a fastq fai record",
                 record: Fai {
                     name: "name".into(),
                     length: 1,
