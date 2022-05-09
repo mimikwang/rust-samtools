@@ -10,6 +10,7 @@ where
 {
     reader: B,
     buffer: Vec<u8>,
+    eof: bool,
 }
 
 impl<B> Reader<B>
@@ -21,6 +22,7 @@ where
         Self {
             reader,
             buffer: Vec::new(),
+            eof: false,
         }
     }
 
@@ -43,7 +45,7 @@ where
     /// Read the entire sequence
     fn read_sequence(&mut self, record: &mut Fai) -> Result<()> {
         loop {
-            if is_description(&self.buffer) {
+            if is_description(&self.buffer) || self.eof {
                 return Ok(());
             }
             self.read_sequence_line(record)?;
@@ -69,7 +71,17 @@ where
 
     /// Read in a line of data
     fn read_line(&mut self) -> Result<usize> {
-        common::read_line(&mut self.reader, &mut self.buffer)
+        match common::read_line(&mut self.reader, &mut self.buffer) {
+            Err(e) if e.kind == ErrorKind::Eof => {
+                if self.eof {
+                    Err(e)
+                } else {
+                    self.eof = true;
+                    Ok(0)
+                }
+            }
+            any => any,
+        }
     }
 }
 
@@ -82,6 +94,24 @@ where
         self.read_description(record)?;
         self.read_sequence(record)?;
         Ok(())
+    }
+}
+
+impl<R> Reader<std::io::BufReader<R>>
+where
+    R: std::io::Read + std::io::Seek,
+{
+    /// Construct a reader
+    pub fn from_reader(reader: R) -> Self {
+        Reader::new(std::io::BufReader::new(reader))
+    }
+}
+
+impl Reader<std::io::BufReader<std::fs::File>> {
+    /// Construct a reader from path
+    pub fn from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
+        let file = std::fs::File::open(path)?;
+        Ok(Reader::from_reader(file))
     }
 }
 
@@ -128,12 +158,12 @@ GCATGCATGCATGC"#;
         assert!(
             reader.read(&mut record).is_ok(),
             "{}",
-            "Should work for example in documentation [Issue #14]",
+            "Should work for example in documentation [#14]",
         );
         assert_eq!(
             expected, record,
             "{}",
-            "Should work for example in documentation [Issue #14]",
+            "Should work for example in documentation [#14]",
         );
 
         record.clear();
@@ -145,16 +175,15 @@ GCATGCATGCATGC"#;
             line_width: 15,
             qual_offset: None,
         };
-        assert_eq!(
-            reader.read(&mut record).unwrap_err().kind,
-            ErrorKind::Eof,
+        assert!(
+            reader.read(&mut record).is_ok(),
             "{}",
-            "Should return an end of file error [Issue #14]",
+            "Should read a second record [#14]",
         );
         assert_eq!(
             expected, record,
             "{}",
-            "Should work for example in documentation [Issue #14]",
+            "Should work for example in documentation [#14]",
         );
     }
 
@@ -174,13 +203,9 @@ GCATGCATGCATGC"#;
         assert!(
             reader.read(&mut record).is_ok(),
             "{}",
-            "Should read a fasta entry into Fai record [Issue #14]"
+            "Should read a fasta entry into Fai record [#14]"
         );
-        assert_eq!(
-            expected, record,
-            "{}",
-            "Should read in a record [Issue #14]",
-        );
+        assert_eq!(expected, record, "{}", "Should read in a record [#14]",);
 
         record.clear();
         let expected = Fai {
@@ -191,16 +216,23 @@ GCATGCATGCATGC"#;
             length: 5,
             qual_offset: None,
         };
-        assert_eq!(
-            ErrorKind::Eof,
-            reader.read(&mut record).unwrap_err().kind,
+        assert!(
+            reader.read(&mut record).is_ok(),
             "{}",
-            "Should return an Eof error [Issue #14]",
+            "Should read a second record [#14]",
         );
         assert_eq!(
             expected, record,
             "{}",
-            "Should read in a second record [Issue #14]",
+            "Should read in a second record [#14]",
+        );
+
+        record.clear();
+        assert_eq!(
+            ErrorKind::Eof,
+            reader.read(&mut record).unwrap_err().kind,
+            "{}",
+            "Should return an EOF error [#14]",
         );
     }
 
@@ -212,17 +244,17 @@ GCATGCATGCATGC"#;
         assert!(
             reader.read_description(&mut record).is_ok(),
             "{}",
-            "Should read description into Fai record [Issue #14]",
+            "Should read description into Fai record [#14]",
         );
         assert_eq!(
             "abcdef", &record.name,
             "{}",
-            "Should read in the record name [Issue #14]",
+            "Should read in the record name [#14]",
         );
         assert_eq!(
             13, record.offset,
             "{}",
-            "Should read in the sequence offset [Issue #14]",
+            "Should read in the sequence offset [#14]",
         );
     }
 
@@ -234,22 +266,22 @@ GCATGCATGCATGC"#;
         assert!(
             reader.read_sequence(&mut record).is_ok(),
             "{}",
-            "Should read sequence into Fai record [Issue #14]"
+            "Should read sequence into Fai record [#14]"
         );
         assert_eq!(
             4, record.line_bases,
             "{}",
-            "Should read in the number of bases in a line [Issue #14]",
+            "Should read in the number of bases in a line [#14]",
         );
         assert_eq!(
             5, record.line_width,
             "{}",
-            "Should read in the number of bytes in a line [Issue #14]",
+            "Should read in the number of bytes in a line [#14]",
         );
         assert_eq!(
             8, record.length,
             "{}",
-            "Should increment number of bases [Issue #14]",
+            "Should increment number of bases [#14]",
         );
 
         let input_line = std::io::Cursor::new(b"AAAA\nAAAAA\n>abcdef\nAAAA\n");
@@ -258,7 +290,7 @@ GCATGCATGCATGC"#;
         assert!(
             reader.read_sequence(&mut record).is_err(),
             "{}",
-            "Should error out if the line widths are inconsistent [Issue #14]"
+            "Should error out if the line widths are inconsistent [#14]"
         );
     }
 
@@ -270,22 +302,22 @@ GCATGCATGCATGC"#;
         assert!(
             reader.read_sequence_line(&mut record).is_ok(),
             "{}",
-            "Should read sequence line into Fai record [Issue #14]"
+            "Should read sequence line into Fai record [#14]"
         );
         assert_eq!(
             4, record.line_bases,
             "{}",
-            "Should read in the number of bases in a line [Issue #14]",
+            "Should read in the number of bases in a line [#14]",
         );
         assert_eq!(
             6, record.line_width,
             "{}",
-            "Should read in the number of bytes in a line [Issue #14]",
+            "Should read in the number of bytes in a line [#14]",
         );
         assert_eq!(
             4, record.length,
             "{}",
-            "Should increment number of bases [Issue #14]",
+            "Should increment number of bases [#14]",
         );
     }
 
@@ -299,19 +331,19 @@ GCATGCATGCATGC"#;
         }
         let test_cases = [
             TestCase {
-                name: "Should return an error on an invalid description [Issue #14]",
+                name: "Should return an error on an invalid description [#14]",
                 description: b"abcdefg",
                 expect_error: true,
                 expected: String::new(),
             },
             TestCase {
-                name: "Should parse a name from the description [Issue #14]",
+                name: "Should parse a name from the description [#14]",
                 description: b">name a b c d e f",
                 expect_error: false,
                 expected: "name".to_string(),
             },
             TestCase {
-                name: "Should skip spaces after > before name [Issue #14]",
+                name: "Should skip spaces after > before name [#14]",
                 description: b">    name abcdef",
                 expect_error: false,
                 expected: "name".to_string(),
@@ -338,17 +370,17 @@ GCATGCATGCATGC"#;
         }
         let test_cases = [
             TestCase {
-                name: "Should return true for a description line [Issue #14]",
+                name: "Should return true for a description line [#14]",
                 line: b">abcdef",
                 expected: true,
             },
             TestCase {
-                name: "Should return false for a non description line [Issue #14]",
+                name: "Should return false for a non description line [#14]",
                 line: b"bla",
                 expected: false,
             },
             TestCase {
-                name: "Should return false for an empty line [Issue #14]",
+                name: "Should return false for an empty line [#14]",
                 line: b"",
                 expected: false,
             },
@@ -361,5 +393,17 @@ GCATGCATGCATGC"#;
                 test_case.name
             );
         }
+    }
+
+    #[test]
+    fn test_reader_iter() {
+        let input_line = std::io::Cursor::new(b">abc aa\nAAAA\nAAA\n>abcdef\nAAAAA\n");
+        let results: Vec<Result<Fai>> = Reader::new(input_line).iter().collect();
+        assert_eq!(
+            2,
+            results.len(),
+            "{}",
+            "Should iterate through all records [#16]"
+        );
     }
 }

@@ -5,6 +5,7 @@ use crate::errors::{Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
 
 pub use reader::Reader;
+pub use writer::Writer;
 
 const DELIMITER: u8 = b'\t';
 const FASTA_WIDTH: usize = 5;

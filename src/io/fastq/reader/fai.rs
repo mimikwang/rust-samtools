@@ -11,6 +11,7 @@ where
     reader: B,
     buffer: Vec<u8>,
     sequence_num_bytes: usize,
+    eof: bool,
 }
 
 impl<B> Reader<B>
@@ -23,6 +24,7 @@ where
             reader,
             buffer: Vec::new(),
             sequence_num_bytes: 0,
+            eof: false,
         }
     }
 
@@ -87,7 +89,17 @@ where
 
     /// Read in a line of data
     fn read_line(&mut self) -> Result<usize> {
-        common::read_line(&mut self.reader, &mut self.buffer)
+        match common::read_line(&mut self.reader, &mut self.buffer) {
+            Err(e) if e.kind == ErrorKind::Eof => {
+                if self.eof {
+                    Err(e)
+                } else {
+                    self.eof = true;
+                    Ok(0)
+                }
+            }
+            any => any,
+        }
     }
 }
 
@@ -160,12 +172,12 @@ IIA94445EEII==
         assert!(
             reader.read(&mut record).is_ok(),
             "{}",
-            "Should work for example in documentation [Issue #15]",
+            "Should work for example in documentation [#15]",
         );
         assert_eq!(
             expected, record,
             "{}",
-            "Should work for example in documentation [Issue #15]",
+            "Should work for example in documentation [#15]",
         );
 
         record.clear();
@@ -177,16 +189,15 @@ IIA94445EEII==
             line_width: 15,
             qual_offset: Some(188),
         };
-        assert_eq!(
-            reader.read(&mut record).unwrap_err().kind,
-            ErrorKind::Eof,
+        assert!(
+            reader.read(&mut record).is_ok(),
             "{}",
-            "Should return an end of file error [Issue #14]",
+            "Should read a second record [#15]",
         );
         assert_eq!(
             expected, record,
             "{}",
-            "Should work for example in documentation [Issue #14]",
+            "Should work for example in documentation [#15]",
         );
     }
 
@@ -199,17 +210,17 @@ IIA94445EEII==
         }
         let test_cases = [
             TestCase {
-                name: "Should return true for a description line [Issue #15]",
+                name: "Should return true for a description line [#15]",
                 line: b"@abcdef",
                 expected: true,
             },
             TestCase {
-                name: "Should return false for a non description line [Issue #15]",
+                name: "Should return false for a non description line [#15]",
                 line: b"bla",
                 expected: false,
             },
             TestCase {
-                name: "Should return false for an empty line [Issue #15]",
+                name: "Should return false for an empty line [#15]",
                 line: b"",
                 expected: false,
             },

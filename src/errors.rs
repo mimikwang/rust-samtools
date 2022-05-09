@@ -16,6 +16,7 @@ pub enum ErrorKind {
     Eof,
     TypeConversion,
     Unknown,
+    User,
 }
 
 impl std::fmt::Display for Error {
