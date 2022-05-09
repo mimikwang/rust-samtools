@@ -1,7 +1,6 @@
-use super::super::super::common;
 use super::*;
 use crate::errors::{Error, ErrorKind, Result};
-use crate::io::fai::{Fai, IterFai, ReadFai};
+use crate::io::fai::{Fai, IterFai, ReadToFai};
 
 /// Reader reads a fastq file into FAI entries
 pub struct Reader<B>
@@ -28,12 +27,12 @@ where
         }
     }
 
-    // Returns an iterator
+    /// Consume the reader and return an `IterFai`
     pub fn iter(self) -> IterFai<Self> {
         IterFai::new(self)
     }
 
-    /// Read the first line of the fastq entry
+    /// Read the first line of the FASTQ entry
     fn read_description(&mut self, record: &mut Fai) -> Result<()> {
         if self.buffer.is_empty() {
             self.read_line()?;
@@ -103,17 +102,35 @@ where
     }
 }
 
-impl<R> ReadFai for Reader<R>
+impl<R> ReadToFai for Reader<R>
 where
     R: std::io::BufRead + std::io::Seek,
 {
-    /// Read a FAI record
+    /// Read a Fai record
     fn read(&mut self, record: &mut Fai) -> Result<()> {
         self.read_description(record)?;
         self.read_sequence(record)?;
         self.read_plus(record)?;
         self.read_quality()?;
         Ok(())
+    }
+}
+
+impl<R> Reader<std::io::BufReader<R>>
+where
+    R: std::io::Read + std::io::Seek,
+{
+    /// Construct from a read seeker
+    pub fn from_readseeker(readseeker: R) -> Self {
+        Reader::new(std::io::BufReader::new(readseeker))
+    }
+}
+
+impl Reader<std::io::BufReader<std::fs::File>> {
+    /// Construct a reader from path
+    pub fn from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
+        let file = std::fs::File::open(path)?;
+        Ok(Reader::from_readseeker(file))
     }
 }
 
@@ -171,14 +188,9 @@ IIA94445EEII==
         };
         assert!(
             reader.read(&mut record).is_ok(),
-            "{}",
-            "Should work for example in documentation [#15]",
+            "Should work for example in documentation",
         );
-        assert_eq!(
-            expected, record,
-            "{}",
-            "Should work for example in documentation [#15]",
-        );
+        assert_eq!(expected, record, "Should work for example in documentation",);
 
         record.clear();
         let expected = Fai {
@@ -191,13 +203,35 @@ IIA94445EEII==
         };
         assert!(
             reader.read(&mut record).is_ok(),
-            "{}",
-            "Should read a second record [#15]",
+            "Should read a second record",
         );
+        assert_eq!(expected, record, "Should work for example in documentation",);
+    }
+
+    #[test]
+    fn test_reader_read() {
+        let input_line = std::io::Cursor::new(b"@abc a\nAAAAA\n+abc\n=====\n");
+        let mut reader = Reader::new(input_line);
+        let mut record = Fai::new();
+        let expected = Fai {
+            name: "abc".into(),
+            offset: 7,
+            line_width: 6,
+            line_bases: 5,
+            length: 5,
+            qual_offset: Some(18),
+        };
+        assert!(
+            reader.read(&mut record).is_ok(),
+            "Should read FASTQ entry into Fai record",
+        );
+        assert_eq!(expected, record, "Should read in a record");
+
+        record.clear();
         assert_eq!(
-            expected, record,
-            "{}",
-            "Should work for example in documentation [#15]",
+            ErrorKind::Eof,
+            reader.read(&mut record).unwrap_err().kind,
+            "Should return an Eof error",
         );
     }
 
@@ -210,17 +244,17 @@ IIA94445EEII==
         }
         let test_cases = [
             TestCase {
-                name: "Should return true for a description line [#15]",
+                name: "Should return true for a description line",
                 line: b"@abcdef",
                 expected: true,
             },
             TestCase {
-                name: "Should return false for a non description line [#15]",
+                name: "Should return false for a non description line",
                 line: b"bla",
                 expected: false,
             },
             TestCase {
-                name: "Should return false for an empty line [#15]",
+                name: "Should return false for an empty line",
                 line: b"",
                 expected: false,
             },

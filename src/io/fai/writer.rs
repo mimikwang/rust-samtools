@@ -10,8 +10,8 @@ impl<W> Writer<W>
 where
     W: std::io::Write,
 {
-    /// Construct a fai writer from std::io::Write
-    pub fn from_writer(writer: W) -> Self {
+    /// Construct a Fai writer from `std::io::Write`
+    pub fn new(writer: W) -> Self {
         Self {
             writer: csv::WriterBuilder::new()
                 .delimiter(DELIMITER)
@@ -20,7 +20,7 @@ where
         }
     }
 
-    /// Write an fai record
+    /// Write a Fai record
     pub fn write(&mut self, record: &Fai) -> Result<()> {
         self.writer.write_record(&record.to_string_record())?;
         Ok(())
@@ -40,7 +40,7 @@ mod tests {
         }
         let test_cases = &[
             TestCase {
-                name: "Should write a fasta FAI record [Issue #6]",
+                name: "Should write a fasta FAI record",
                 record: Fai {
                     name: "record1".into(),
                     length: 1,
@@ -52,7 +52,7 @@ mod tests {
                 expected: "record1\t1\t2\t3\t4\n",
             },
             TestCase {
-                name: "Should write a fastq FAI record [Issue #6]",
+                name: "Should write a fastq FAI record",
                 record: Fai {
                     name: "record2".into(),
                     length: 1,
@@ -65,7 +65,7 @@ mod tests {
             },
         ];
         for test_case in test_cases.iter() {
-            let mut writer = Writer::from_writer(vec![]);
+            let mut writer = Writer::new(vec![]);
             assert!(
                 writer.write(&test_case.record).is_ok(),
                 "{}",
@@ -78,8 +78,8 @@ mod tests {
 
     #[test]
     fn test_writer_write_different_widths() {
-        let name = "Should error out if mixing fasta and fastq entries [Issue #6]";
-        let mut writer = Writer::from_writer(vec![]);
+        let name = "Should error out if mixing fasta and fastq entries";
+        let mut writer = Writer::new(vec![]);
         let mut record = Fai {
             name: "name".into(),
             length: 1,

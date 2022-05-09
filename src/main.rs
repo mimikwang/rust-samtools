@@ -1,3 +1,6 @@
+//! Rust implementation of [`samtools`]
+//!
+//! [`samtools`]: https://www.htslib.org/
 mod cmd;
 mod errors;
 mod io;
