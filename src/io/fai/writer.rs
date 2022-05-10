@@ -1,4 +1,4 @@
-use super::{Fai, DELIMITER};
+use super::{Record, DELIMITER};
 use crate::errors::Result;
 
 /// Writer is a writer for fai files
@@ -21,7 +21,7 @@ where
     }
 
     /// Write a Fai record
-    pub fn write(&mut self, record: &Fai) -> Result<()> {
+    pub fn write(&mut self, record: &Record) -> Result<()> {
         self.writer.write_record(&record.to_string_record())?;
         Ok(())
     }
@@ -35,13 +35,13 @@ mod tests {
     fn test_writer_write() {
         struct TestCase<'a> {
             name: &'a str,
-            record: Fai,
+            record: Record,
             expected: &'a str,
         }
         let test_cases = &[
             TestCase {
                 name: "Should write a fasta FAI record",
-                record: Fai {
+                record: Record {
                     name: "record1".into(),
                     length: 1,
                     offset: 2,
@@ -53,7 +53,7 @@ mod tests {
             },
             TestCase {
                 name: "Should write a fastq FAI record",
-                record: Fai {
+                record: Record {
                     name: "record2".into(),
                     length: 1,
                     offset: 2,
@@ -80,7 +80,7 @@ mod tests {
     fn test_writer_write_different_widths() {
         let name = "Should error out if mixing fasta and fastq entries";
         let mut writer = Writer::new(vec![]);
-        let mut record = Fai {
+        let mut record = Record {
             name: "name".into(),
             length: 1,
             offset: 2,

@@ -1,37 +1,38 @@
 use super::*;
 use crate::errors::{Error, ErrorKind, Result};
-use crate::io::fai::{Fai, IterFai, ReadToFai};
+use crate::io::fai::{self, ReadToFai};
+use std::io::Seek;
 
 /// Reader reads a FASTA file into Fai records
-pub struct Reader<B>
+pub struct Reader<R>
 where
-    B: std::io::BufRead + std::io::Seek,
+    R: std::io::Read + std::io::Seek,
 {
-    reader: B,
+    reader: std::io::BufReader<R>,
     buffer: Vec<u8>,
     eof: bool,
 }
 
-impl<B> Reader<B>
+impl<R> Reader<R>
 where
-    B: std::io::BufRead + std::io::Seek,
+    R: std::io::Read + std::io::Seek,
 {
     /// Construct a new reader
-    pub fn new(reader: B) -> Self {
+    pub fn new(reader: R) -> Self {
         Self {
-            reader,
+            reader: std::io::BufReader::new(reader),
             buffer: Vec::new(),
             eof: false,
         }
     }
 
-    /// Consume the reader and return an `IterFai`
-    pub fn iter(self) -> IterFai<Self> {
-        IterFai::new(self)
+    /// Consume a reader by iterating over it
+    fn iter(self) -> fai::Records<Reader<R>> {
+        fai::Records::new(self)
     }
 
     /// Read the first line of the FASTA entry
-    fn read_description(&mut self, record: &mut Fai) -> Result<()> {
+    fn read_description(&mut self, record: &mut fai::Record) -> Result<()> {
         if self.buffer.is_empty() {
             self.read_line()?;
         };
@@ -42,7 +43,7 @@ where
     }
 
     /// Read the entire sequence
-    fn read_sequence(&mut self, record: &mut Fai) -> Result<()> {
+    fn read_sequence(&mut self, record: &mut fai::Record) -> Result<()> {
         loop {
             if is_description(&self.buffer) || self.eof {
                 return Ok(());
@@ -52,7 +53,7 @@ where
     }
 
     /// Read in a sequence line
-    fn read_sequence_line(&mut self, record: &mut Fai) -> Result<()> {
+    fn read_sequence_line(&mut self, record: &mut fai::Record) -> Result<()> {
         self.buffer.clear();
         let num_bytes = self.read_line()?;
         if is_description(&self.buffer) {
@@ -86,31 +87,21 @@ where
 
 impl<R> ReadToFai for Reader<R>
 where
-    R: std::io::BufRead + std::io::Seek,
+    R: std::io::Read + std::io::Seek,
 {
     /// Read a Fai record
-    fn read(&mut self, record: &mut Fai) -> Result<()> {
+    fn read(&mut self, record: &mut fai::Record) -> Result<()> {
         self.read_description(record)?;
         self.read_sequence(record)?;
         Ok(())
     }
 }
 
-impl<R> Reader<std::io::BufReader<R>>
-where
-    R: std::io::Read + std::io::Seek,
-{
-    /// Construct from a read seeker
-    pub fn from_readseeker(readseeker: R) -> Self {
-        Reader::new(std::io::BufReader::new(readseeker))
-    }
-}
-
-impl Reader<std::io::BufReader<std::fs::File>> {
+impl Reader<std::fs::File> {
     /// Construct a reader from path
     pub fn from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
         let file = std::fs::File::open(path)?;
-        Ok(Reader::from_readseeker(file))
+        Ok(Reader::new(file))
     }
 }
 
@@ -145,8 +136,8 @@ ATGCATGCATGCAT
 GCATGCATGCATGC"#;
         let input_line = std::io::Cursor::new(input);
         let mut reader = Reader::new(input_line);
-        let mut record = Fai::new();
-        let expected = Fai {
+        let mut record = fai::Record::new();
+        let expected = fai::Record {
             name: "one".into(),
             length: 66,
             offset: 5,
@@ -161,7 +152,7 @@ GCATGCATGCATGC"#;
         assert_eq!(expected, record, "Should work for example in documentation",);
 
         record.clear();
-        let expected = Fai {
+        let expected = fai::Record {
             name: "two".into(),
             length: 28,
             offset: 98,
@@ -180,8 +171,8 @@ GCATGCATGCATGC"#;
     fn test_reader_read() {
         let input_line = std::io::Cursor::new(b">abc aa\nAAAA\nAAA\n>abcdef\nAAAAA\n");
         let mut reader = Reader::new(input_line);
-        let mut record = Fai::new();
-        let expected = Fai {
+        let mut record = fai::Record::new();
+        let expected = fai::Record {
             name: "abc".into(),
             offset: 8,
             line_width: 5,
@@ -196,7 +187,7 @@ GCATGCATGCATGC"#;
         assert_eq!(expected, record, "Should read in a record");
 
         record.clear();
-        let expected = Fai {
+        let expected = fai::Record {
             name: "abcdef".into(),
             offset: 25,
             line_width: 6,
@@ -222,7 +213,7 @@ GCATGCATGCATGC"#;
     fn test_reader_read_description() {
         let input_line = std::io::Cursor::new(b">abcdef aaaa\nAAAA\nAAAA\n");
         let mut reader = Reader::new(input_line);
-        let mut record = Fai::new();
+        let mut record = fai::Record::new();
         assert!(
             reader.read_description(&mut record).is_ok(),
             "Should read description into Fai record",
@@ -235,7 +226,7 @@ GCATGCATGCATGC"#;
     fn test_reader_read_sequence() {
         let input_line = std::io::Cursor::new(b"AAAA\nAAAA\n>abcdef\nAAAA\n");
         let mut reader = Reader::new(input_line);
-        let mut record = Fai::new();
+        let mut record = fai::Record::new();
         assert!(
             reader.read_sequence(&mut record).is_ok(),
             "Should read sequence into Fai record"
@@ -263,7 +254,7 @@ GCATGCATGCATGC"#;
     fn test_reader_read_sequence_line() {
         let input_line = std::io::Cursor::new(b"AAAA\r\nAAAA\r\n");
         let mut reader = Reader::new(input_line);
-        let mut record = Fai::new();
+        let mut record = fai::Record::new();
         assert!(
             reader.read_sequence_line(&mut record).is_ok(),
             "Should read sequence line into Fai record"
@@ -356,7 +347,7 @@ GCATGCATGCATGC"#;
     #[test]
     fn test_reader_iter() {
         let input_line = std::io::Cursor::new(b">abc aa\nAAAA\nAAA\n>abcdef\nAAAAA\n");
-        let results: Vec<Result<Fai>> = Reader::new(input_line).iter().collect();
+        let results: Vec<Result<fai::Record>> = Reader::new(input_line).iter().collect();
         assert_eq!(2, results.len(), "Should iterate through all records");
     }
 }

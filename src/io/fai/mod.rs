@@ -13,7 +13,17 @@ const FASTQ_WIDTH: usize = 6;
 
 /// ReadToFai reads to a Fai record
 pub trait ReadToFai {
-    fn read(&mut self, record: &mut Fai) -> Result<()>;
+    fn read(&mut self, record: &mut Record) -> Result<()>;
+}
+
+/// ReadToFai for a Boxed reader
+impl<R> ReadToFai for Box<R>
+where
+    R: ReadToFai + Sized,
+{
+    fn read(&mut self, record: &mut Record) -> Result<()> {
+        (**self).read(record)
+    }
 }
 
 /// Fai record as defined in the [`documentation`]
@@ -21,7 +31,7 @@ pub trait ReadToFai {
 /// [`documentation`]: https://www.htslib.org/doc/faidx.html
 ///
 #[derive(Debug, Deserialize, PartialEq, Serialize, Default)]
-pub struct Fai {
+pub struct Record {
     /// Name of this reference sequence
     pub name: String,
     /// Total length of this reference sequence, in bases
@@ -37,7 +47,7 @@ pub struct Fai {
     pub qual_offset: Option<u64>,
 }
 
-impl Fai {
+impl Record {
     /// Construct a default Fai record
     pub fn new() -> Self {
         Self::default()
@@ -69,7 +79,7 @@ impl Fai {
     }
 }
 
-impl std::convert::TryFrom<&mut csv::StringRecord> for Fai {
+impl std::convert::TryFrom<&mut csv::StringRecord> for Record {
     type Error = Error;
 
     /// Convert a csv string record to a Fai record
@@ -83,39 +93,39 @@ impl std::convert::TryFrom<&mut csv::StringRecord> for Fai {
         if record.len() == FASTA_WIDTH {
             record.push_field("");
         }
-        let fai: Fai = record.deserialize(None)?;
-        Ok(fai)
+        let record: Record = record.deserialize(None)?;
+        Ok(record)
     }
 }
 
 /// Type for iterating over fai records
 #[derive(Debug)]
-pub struct IterFai<F>
+pub struct Records<F>
 where
     F: ReadToFai,
 {
     reader: F,
 }
 
-impl<F> IterFai<F>
+impl<F> Records<F>
 where
     F: ReadToFai,
 {
-    /// Construct a new IterFai given a reader
+    /// Construct a new Records given a reader
     pub fn new(reader: F) -> Self {
         Self { reader }
     }
 }
 
-impl<F> Iterator for IterFai<F>
+impl<F> Iterator for Records<F>
 where
     F: ReadToFai,
 {
-    type Item = Result<Fai>;
+    type Item = Result<Record>;
 
     /// Implementation of the Iterator trait for IterFai
     fn next(&mut self) -> Option<Self::Item> {
-        let mut record = Fai::new();
+        let mut record = Record::new();
         match self.reader.read(&mut record) {
             Ok(()) => Some(Ok(record)),
             Err(err) if err.kind == ErrorKind::Eof => None,
@@ -134,14 +144,14 @@ mod tests {
             name: &'a str,
             record: csv::StringRecord,
             expect_error: bool,
-            expected: Fai,
+            expected: Record,
         }
         let test_cases = &mut [
             TestCase {
                 name: "Should parse a valid string record with 6 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10", "4", "3"]),
                 expect_error: false,
-                expected: Fai {
+                expected: Record {
                     name: "name".into(),
                     length: 1,
                     offset: 1,
@@ -154,7 +164,7 @@ mod tests {
                 name: "Should parse a valid string record with 5 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10", "4"]),
                 expect_error: false,
-                expected: Fai {
+                expected: Record {
                     name: "name".into(),
                     length: 1,
                     offset: 1,
@@ -167,24 +177,24 @@ mod tests {
                 name: "Should return an error with less than 5 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10"]),
                 expect_error: true,
-                expected: Fai::new(),
+                expected: Record::new(),
             },
             TestCase {
                 name: "Should return an error with more than 6 entries",
                 record: csv::StringRecord::from(vec!["name", "1", "1", "10", "4", "6", "6"]),
                 expect_error: true,
-                expected: Fai::new(),
+                expected: Record::new(),
             },
             TestCase {
                 name: "Should return an error if entries are not the right type",
                 record: csv::StringRecord::from(vec!["name", "1", "1.2", "10", "4", "6"]),
                 expect_error: true,
-                expected: Fai::new(),
+                expected: Record::new(),
             },
         ];
 
         for test_case in test_cases.iter_mut() {
-            let actual = Fai::try_from(&mut test_case.record);
+            let actual = Record::try_from(&mut test_case.record);
             if test_case.expect_error {
                 assert!(actual.is_err(), "{}", test_case.name);
             } else {
@@ -199,13 +209,13 @@ mod tests {
     fn test_fai_to_string_record() {
         struct TestCase<'a> {
             name: &'a str,
-            record: Fai,
+            record: Record,
             expected: csv::StringRecord,
         }
         let test_cases = &[
             TestCase {
                 name: "Should convert a fasta fai record",
-                record: Fai {
+                record: Record {
                     name: "name".into(),
                     length: 1,
                     offset: 2,
@@ -217,7 +227,7 @@ mod tests {
             },
             TestCase {
                 name: "Should convert a fastq fai record",
-                record: Fai {
+                record: Record {
                     name: "name".into(),
                     length: 1,
                     offset: 2,
