@@ -1,4 +1,4 @@
-use super::{Fai, IterFai, ReadToFai, DELIMITER};
+use super::{ReadToFai, Record, Records, DELIMITER};
 use crate::errors::{Error, ErrorKind, Result};
 
 /// Reader is a reader for fai files
@@ -23,8 +23,8 @@ where
     }
 
     // Consume the reader and return an `IterFai`
-    pub fn iter(self) -> IterFai<Self> {
-        IterFai::new(self)
+    pub fn iter(self) -> Records<Self> {
+        Records::new(self)
     }
 }
 
@@ -33,9 +33,9 @@ where
     R: std::io::Read,
 {
     /// Read a Fai record
-    fn read(&mut self, record: &mut Fai) -> Result<()> {
+    fn read(&mut self, record: &mut Record) -> Result<()> {
         if self.reader.read_record(&mut self.string_record)? {
-            *record = Fai::try_from(&mut self.string_record)?;
+            *record = Record::try_from(&mut self.string_record)?;
             return Ok(());
         }
         Err(Error::new(ErrorKind::Eof, "end of file"))
@@ -52,14 +52,14 @@ mod tests {
             name: &'a str,
             input_line: &'a [u8],
             expect_error: bool,
-            expected: Fai,
+            expected: Record,
         }
         let test_cases = &mut [
             TestCase {
                 name: "Should read in a FAI record",
                 input_line: b"name\t1\t2\t3\t4\n",
                 expect_error: false,
-                expected: Fai {
+                expected: Record {
                     name: "name".into(),
                     length: 1,
                     offset: 2,
@@ -72,18 +72,18 @@ mod tests {
                 name: "Should error out if end of file",
                 input_line: b"",
                 expect_error: true,
-                expected: Fai::new(),
+                expected: Record::new(),
             },
             TestCase {
                 name: "Should error out if the input is invalid",
                 input_line: b"name\tasdf\t2\t3\t4\t5\n",
                 expect_error: true,
-                expected: Fai::new(),
+                expected: Record::new(),
             },
         ];
         for test_case in test_cases.iter_mut() {
             let mut reader = Reader::new(test_case.input_line);
-            let mut record = Fai::new();
+            let mut record = Record::new();
             let actual = reader.read(&mut record);
             if test_case.expect_error {
                 assert!(actual.is_err(), "{}", test_case.name);
@@ -99,13 +99,13 @@ mod tests {
         let name = "Should error out if mixing fasta and fastq entries";
         let input_lines: &[u8] = b"ref1\t1\t2\t3\t4\nref2\t1\t2\t3\t4\t5\n";
         let mut reader = Reader::new(input_lines);
-        let mut record = Fai::new();
+        let mut record = Record::new();
         assert!(reader.read(&mut record).is_ok(), "{}", name);
         assert!(reader.read(&mut record).is_err(), "{}", name);
 
         let input_lines: &[u8] = b"ref1\t1\t2\t3\t4\t5\nref2\t1\t2\t3\t4\n";
         let mut reader = Reader::new(input_lines);
-        let mut record = Fai::new();
+        let mut record = Record::new();
         assert!(reader.read(&mut record).is_ok(), "{}", name);
         assert!(reader.read(&mut record).is_err(), "{}", name);
     }
@@ -118,7 +118,7 @@ mod tests {
 
         assert_eq!(
             iter.next(),
-            Some(Ok(Fai {
+            Some(Ok(Record {
                 name: "ref1".into(),
                 length: 1,
                 offset: 2,
@@ -130,7 +130,7 @@ mod tests {
         );
         assert_eq!(
             iter.next(),
-            Some(Ok(Fai {
+            Some(Ok(Record {
                 name: "ref2".into(),
                 length: 1,
                 offset: 2,
