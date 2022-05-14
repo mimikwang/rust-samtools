@@ -1,9 +1,11 @@
+mod indexer;
 mod reader;
 mod writer;
 
 use crate::errors::{Error, ErrorKind, Result};
 use serde::{Deserialize, Serialize};
 
+pub use indexer::{Format as IndexerFormat, Indexer};
 pub use reader::Reader;
 pub use writer::Writer;
 
@@ -14,16 +16,6 @@ const FASTQ_WIDTH: usize = 6;
 /// ReadToFai reads to a Fai record
 pub trait ReadToFai {
     fn read(&mut self, record: &mut Record) -> Result<()>;
-}
-
-/// ReadToFai for a Boxed reader
-impl<R> ReadToFai for Box<R>
-where
-    R: ReadToFai + Sized,
-{
-    fn read(&mut self, record: &mut Record) -> Result<()> {
-        (**self).read(record)
-    }
 }
 
 /// Fai record as defined in the [`documentation`]
